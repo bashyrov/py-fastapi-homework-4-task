@@ -6,6 +6,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
+from starlette.background import BackgroundTasks
 
 from config import get_jwt_auth_manager, get_settings, BaseAppSettings, get_accounts_email_notificator
 from database import (
@@ -67,7 +68,9 @@ router = APIRouter()
 )
 async def register_user(
         user_data: UserRegistrationRequestSchema,
+        bg_tasks: BackgroundTasks,
         db: AsyncSession = Depends(get_db),
+        email_notificator: EmailSenderInterface = Depends(get_accounts_email_notificator),
 ) -> UserRegistrationResponseSchema:
     """
     Endpoint for user registration.
@@ -120,6 +123,12 @@ async def register_user(
 
         await db.commit()
         await db.refresh(new_user)
+
+        bg_tasks.add_task(
+            func=email_notificator.send_activation_email,
+            email=str(new_user.email),
+            activation_link=f"http://test.com/api/v1/accounts/activate/?email={new_user.email}&token={activation_token.token}"
+        )
     except SQLAlchemyError as e:
         await db.rollback()
         raise HTTPException(
@@ -163,7 +172,9 @@ async def register_user(
 )
 async def activate_account(
         activation_data: UserActivationRequestSchema,
+        bg_tasks: BackgroundTasks,
         db: AsyncSession = Depends(get_db),
+        email_notificator: EmailSenderInterface = Depends(get_accounts_email_notificator),
 ) -> MessageResponseSchema:
     """
     Endpoint to activate a user's account.
@@ -218,6 +229,12 @@ async def activate_account(
     await db.delete(token_record)
     await db.commit()
 
+    bg_tasks.add_task(
+        func=email_notificator.send_activation_complete_email,
+        email=str(user.email),
+        login_link="https://test.com/login/"
+    )
+
     return MessageResponseSchema(message="User account activated successfully.")
 
 
@@ -233,7 +250,9 @@ async def activate_account(
 )
 async def request_password_reset_token(
         data: PasswordResetRequestSchema,
+        bg_tasks: BackgroundTasks,
         db: AsyncSession = Depends(get_db),
+        email_notificator: EmailSenderInterface = Depends(get_accounts_email_notificator),
 ) -> MessageResponseSchema:
     """
     Endpoint to request a password reset token.
@@ -262,6 +281,12 @@ async def request_password_reset_token(
     reset_token = PasswordResetTokenModel(user_id=cast(int, user.id))
     db.add(reset_token)
     await db.commit()
+    reset_link = f"http://test.com/api/v1/accounts/reset-password/?token={reset_token.token}"
+    bg_tasks.add_task(
+        func=email_notificator.send_password_reset_email,
+        email=str(user.email),
+        reset_link=reset_link,
+    )
 
     return MessageResponseSchema(
         message="If you are registered, you will receive an email with instructions."
@@ -313,7 +338,9 @@ async def request_password_reset_token(
 )
 async def reset_password(
         data: PasswordResetCompleteRequestSchema,
+        bg_tasks: BackgroundTasks,
         db: AsyncSession = Depends(get_db),
+        email_notificator: EmailSenderInterface = Depends(get_accounts_email_notificator),
 ) -> MessageResponseSchema:
     """
     Endpoint for resetting a user's password.
@@ -369,6 +396,12 @@ async def reset_password(
         user.password = data.password
         await db.run_sync(lambda s: s.delete(token_record))
         await db.commit()
+        login_link="https://test.com/login/"
+        bg_tasks.add_task(
+            func=email_notificator.send_password_reset_complete_email,
+            email=str(user.email),
+            login_link=login_link,
+        )
     except SQLAlchemyError:
         await db.rollback()
         raise HTTPException(
