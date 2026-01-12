@@ -2,7 +2,7 @@ from datetime import date
 from typing import Optional
 
 from fastapi import UploadFile, Form, File, HTTPException
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, ConfigDict
 
 from database.models.accounts import GenderEnum
 from validation import (
@@ -34,6 +34,7 @@ class ProfileBase(BaseModel):
 
 
 class ProfileCreateResponseSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
 
     id: int
     user_id: int

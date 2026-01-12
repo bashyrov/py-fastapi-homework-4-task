@@ -133,19 +133,34 @@ async def create_profile(
             detail="User already has a profile."
         )
 
-    avatar_path = await upload_avatar(
-        avatar_file=avatar,
-        user_id=user.id,
-        s3_client=s3_client,
-    )
+    avatar_byte_data = await profile_data.avatar.read()
+    avatar_path = f"avatars/{user.id}_{profile_data.avatar.filename}"
 
-    new_profile = UserProfileModel(
+    try:
+        await s3_client.upload_file(file_name=avatar_path, file_data=avatar_byte_data)
+    except S3FileUploadError:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to upload avatar. Please try again later.",
+        )
+
+    profile = UserProfileModel(
         **profile_data.model_dump(exclude=["avatar"]),
         avatar=avatar_path,
         user_id=user.id,
     )
-    db.add(new_profile)
-    await db.commit()
-    await db.refresh(new_profile)
 
-    return new_profile
+    db.add(profile)
+    await db.commit()
+    avatar_url = await s3_client.get_file_url(profile.avatar)
+
+    return ProfileCreateResponseSchema(
+        id=profile.id,
+        user_id=profile.user_id,
+        first_name=profile.first_name,
+        last_name=profile.last_name,
+        gender=profile.gender,
+        date_of_birth=profile.date_of_birth,
+        info=profile.info,
+        avatar=avatar_url,
+    )
