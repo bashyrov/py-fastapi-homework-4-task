@@ -1,9 +1,8 @@
 from datetime import date
-from enum import Enum
 from typing import Optional
 
 from fastapi import UploadFile, Form, File, HTTPException
-from pydantic import BaseModel, field_validator, HttpUrl, ConfigDict
+from pydantic import BaseModel, field_validator
 
 from database.models.accounts import GenderEnum
 from validation import (

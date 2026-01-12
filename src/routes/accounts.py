@@ -127,7 +127,8 @@ async def register_user(
         bg_tasks.add_task(
             func=email_notificator.send_activation_email,
             email=str(new_user.email),
-            activation_link=f"http://test.com/api/v1/accounts/activate/?email={new_user.email}&token={activation_token.token}"
+            activation_link=f"http://test.com/api/v1/accounts/activate/?email="
+                            f"{new_user.email}&token={activation_token.token}"
         )
     except SQLAlchemyError as e:
         await db.rollback()
@@ -396,7 +397,7 @@ async def reset_password(
         user.password = data.password
         await db.run_sync(lambda s: s.delete(token_record))
         await db.commit()
-        login_link="https://test.com/login/"
+        login_link = "https://test.com/login/"
         bg_tasks.add_task(
             func=email_notificator.send_password_reset_complete_email,
             email=str(user.email),
